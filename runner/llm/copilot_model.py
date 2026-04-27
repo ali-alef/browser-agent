@@ -13,11 +13,12 @@ from browser_use.llm.exceptions import ModelProviderError
 from browser_use.llm.messages import BaseMessage
 from browser_use.llm.views import ChatInvokeCompletion
 
-from serializer import CopilotCLIMessageSerializer
+from runner.llm.serializer import CopilotCLIMessageSerializer
 
 T = TypeVar("T", bound=BaseModel)
-LOG_FILE = pathlib.Path("llm_trace.jsonl")
+LOG_FILE = pathlib.Path("storage/runs/llm_trace.jsonl")
 MAX_CONTEXT_TOKENS = 100000
+
 
 @dataclass
 class ChatCopilotCLI(BaseChatModel):
@@ -41,19 +42,13 @@ class ChatCopilotCLI(BaseChatModel):
             return messages
 
         serialized = CopilotCLIMessageSerializer.serialize_messages(messages)
-        token_count = self._estimate_tokens(serialized)
-
-        if token_count <= MAX_CONTEXT_TOKENS:
+        if self._estimate_tokens(serialized) <= MAX_CONTEXT_TOKENS:
             return messages
 
         truncated = [messages[0]]
-
         for msg in messages[1:]:
-            test_messages = truncated + [msg]
-            test_serialized = CopilotCLIMessageSerializer.serialize_messages(test_messages)
-            test_tokens = self._estimate_tokens(test_serialized)
-
-            if test_tokens <= MAX_CONTEXT_TOKENS:
+            test_serialized = CopilotCLIMessageSerializer.serialize_messages(truncated + [msg])
+            if self._estimate_tokens(test_serialized) <= MAX_CONTEXT_TOKENS:
                 truncated.append(msg)
             else:
                 break
@@ -64,9 +59,7 @@ class ChatCopilotCLI(BaseChatModel):
         return truncated
 
     @overload
-    async def ainvoke(
-        self, messages: list[BaseMessage], output_format: None = None, **kwargs: Any
-    ) -> ChatInvokeCompletion[str]: ...
+    async def ainvoke(self, messages: list[BaseMessage], output_format: None = None, **kwargs: Any) -> ChatInvokeCompletion[str]: ...
 
     @overload
     async def ainvoke(self, messages: list[BaseMessage], output_format: type[T], **kwargs: Any) -> ChatInvokeCompletion[T]: ...
@@ -75,30 +68,27 @@ class ChatCopilotCLI(BaseChatModel):
         self, messages: list[BaseMessage], output_format: type[T] | None = None, **kwargs: Any
     ) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
         try:
-            truncated_messages = self._truncate_messages(messages)
-            serialized_message = CopilotCLIMessageSerializer.serialize_messages(truncated_messages)
+            truncated = self._truncate_messages(messages)
+            serialized = CopilotCLIMessageSerializer.serialize_messages(truncated)
             if output_format:
-                response_text = await self._run_copilot(
-                    f"""{serialized_message}\n\nYou MUST return your response as valid JSON.\n\nRules:\n- Output ONLY JSON\n- No explanations\n- No extra text\n- Must strictly follow this schema\n\nSchema:\n{json.dumps(output_format.model_json_schema(), indent=2)}"""
+                prompt = (
+                    f"{serialized}\n\nYou MUST return your response as valid JSON.\n\nRules:\n"
+                    f"- Output ONLY JSON\n- No explanations\n- No extra text\n- Must strictly follow this schema\n\n"
+                    f"Schema:\n{json.dumps(output_format.model_json_schema(), indent=2)}"
                 )
-                self._log_llm_call({"messages": serialized_message, "response": output_format.model_validate_json(response_text)})
+                response_text = await self._run_copilot(prompt)
+                self._log_llm_call({"messages": serialized, "response": output_format.model_validate_json(response_text)})
                 return ChatInvokeCompletion(completion=output_format.model_validate_json(response_text), usage=None)
 
-            response_text = await self._run_copilot(serialized_message)
-            self._log_llm_call({"messages": serialized_message, "response": response_text})
+            response_text = await self._run_copilot(serialized)
+            self._log_llm_call({"messages": serialized, "response": response_text})
             return ChatInvokeCompletion(completion=response_text, usage=None)
         except Exception as e:
             print(f"ridi :D {e}")
             raise
 
     async def _run_copilot(self, prompt: str) -> str:
-        cmd = [
-            self.copilot_binary,
-            "-s",
-            "--output-format",
-            "text",
-            "--no-ask-user",
-        ]
+        cmd = [self.copilot_binary, "-s", "--output-format", "text", "--no-ask-user"]
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -115,10 +105,7 @@ class ChatCopilotCLI(BaseChatModel):
         except TimeoutError as exc:
             process.kill()
             await process.wait()
-            raise ModelProviderError(
-                message=f"Copilot CLI timed out after {self.timeout} seconds.",
-                model=self.name,
-            ) from exc
+            raise ModelProviderError(message=f"Copilot CLI timed out after {self.timeout} seconds.", model=self.name) from exc
 
         stdout_text = stdout.decode("utf-8", errors="replace").strip()
         stderr_text = stderr.decode("utf-8", errors="replace").strip()
@@ -133,5 +120,6 @@ class ChatCopilotCLI(BaseChatModel):
         return stdout_text
 
     def _log_llm_call(self, log: dict) -> None:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(log, ensure_ascii=False) + "\n")

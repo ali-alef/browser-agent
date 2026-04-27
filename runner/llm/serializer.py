@@ -23,7 +23,6 @@ class CopilotCLIMessageSerializer:
             else:
                 raise ValueError(f"Unknown part with type: {part.type}")
 
-        # Just in case of empty part or something.
         return "\n".join([p for p in parts if p])
 
     @staticmethod
@@ -37,35 +36,27 @@ class CopilotCLIMessageSerializer:
     @staticmethod
     def serialize(message: llm_messages.BaseMessage) -> dict[str, str]:
         if isinstance(message, llm_messages.UserMessage):
-            user_result = {
-                'role': message.role,
-                'content': CopilotCLIMessageSerializer._serialize_content(message.content),
-            }
+            result = {"role": message.role, "content": CopilotCLIMessageSerializer._serialize_content(message.content)}
             if message.name is not None:
-                user_result['name'] = message.name
-            return user_result
+                result["name"] = message.name
+            return result
 
         elif isinstance(message, llm_messages.SystemMessage):
-            system_result = {
-                'role': message.role,
-                'content': CopilotCLIMessageSerializer._serialize_content(message.content),
-            }
+            result = {"role": message.role, "content": CopilotCLIMessageSerializer._serialize_content(message.content)}
             if message.name is not None:
-                system_result['name'] = message.name
-            return system_result
+                result["name"] = message.name
+            return result
 
         elif isinstance(message, llm_messages.AssistantMessage):
-            assistant_result = {
-                'role': message.role,
-            }
+            result: dict[str, str] = {"role": message.role}
             if message.content:
-                assistant_result['content'] = CopilotCLIMessageSerializer._serialize_content(message.content)
+                result["content"] = CopilotCLIMessageSerializer._serialize_content(message.content)
             if message.name is not None:
-                assistant_result['name'] = message.name
+                result["name"] = message.name
             if message.refusal is not None:
-                assistant_result['refusal'] = message.refusal
+                result["refusal"] = message.refusal
             if message.tool_calls:
-                assistant_result['tool_calls'] = json.dumps([
+                result["tool_calls"] = json.dumps([
                     {
                         "tool_call_id": tc.id,
                         "function_name": tc.function.name,
@@ -73,15 +64,14 @@ class CopilotCLIMessageSerializer:
                     }
                     for tc in message.tool_calls
                 ])
+            return result
 
-            return assistant_result
         else:
-            raise ValueError(f'Unknown message type: {type(message)}')
+            raise ValueError(f"Unknown message type: {type(message)}")
 
     @staticmethod
     def serialize_messages(messages: list[llm_messages.BaseMessage]) -> str:
         lines = []
-
         for m in messages:
             msg = CopilotCLIMessageSerializer.serialize(m)
             role = msg["role"]
@@ -96,5 +86,4 @@ class CopilotCLIMessageSerializer:
                     lines.append(f"[ASSISTANT_TOOL_CALLS]\n{msg['tool_calls']}")
             elif role == "tool":
                 lines.append(f"[TOOL]\n{msg['content']}")
-
         return "\n\n".join(lines)
