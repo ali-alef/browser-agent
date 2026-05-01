@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Literal
 
 import pydantic
 
 
 class TaskRecord(pydantic.BaseModel):
+    """Task definition only - execution results stored separately in storage/"""
     id: int | str
     prompt: str
-    model: str = "gpt-5.3-codex"
-    status: str = "pending"
-    step_trace: list[dict[str, Any]] = pydantic.Field(default_factory=list)
-    final_output: str = ""
-    failure_category: str | None = None
+    level: Literal["easy", "medium", "hard", "very_hard"]
 
     @pydantic.field_validator("prompt")
     @classmethod

@@ -1,4 +1,7 @@
 import asyncio
 from orchestrator.pipeline import main
 
-asyncio.run(main())
+async def run():
+    await main()
+
+asyncio.run(run())

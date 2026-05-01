@@ -13,5 +13,6 @@ def load_tasks(path: Path = TASKS_PATH) -> list[TaskRecord]:
 
 
 def save_tasks(tasks: list[TaskRecord], path: Path = TASKS_PATH) -> None:
-    payload = TaskList(tasks).model_dump(mode="json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = TaskList(tasks).model_dump(mode="json", serialize_as_any=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

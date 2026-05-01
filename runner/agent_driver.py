@@ -1,21 +1,29 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import browser_use
 
-from runner.llm.copilot_model import ChatCopilotCLI
 from tasks.models import TaskRecord
+from storage.executor import save_run_record
+from runner.session import Run
+from runner.step_sanitizer import sanitize_history
 
 
-async def run_one_task(task: TaskRecord) -> None:
-    task.status = "running"
-    task.failure_category = None
-    task.final_output = ""
-    task.step_trace = []
+async def run_one_task(task: TaskRecord) -> Run:
+    run_record = Run(
+        run_id=str(uuid4()),
+        task_id=task.id,
+        agent_version="gemini-2.5-flash",
+    )
 
     try:
         agent = browser_use.Agent(
             task=task.prompt.strip(),
-            llm=ChatCopilotCLI(model=task.model),
+            llm=browser_use.llm.ChatGoogle(
+                model="gemini-2.5-flash",
+                api_key="AIzaSyBQmtjOcORblJY28moMGEVQkgqnGriFBM0",
+            ),
             task_id=str(task.id),
             browser=browser_use.Browser(
                 proxy=browser_use.browser.ProxySettings(server="socks5://localhost:2080")
@@ -23,21 +31,25 @@ async def run_one_task(task: TaskRecord) -> None:
         )
         history = await agent.run()
 
-        task.step_trace = history.model_dump().get("history", [])
-        task.final_output = history.final_result() or ""
+        # Extract and sanitize steps to keep only essential fields
+        raw_steps = history.model_dump().get("history", [])
+        run_record.steps = sanitize_history(raw_steps)
+        run_record.final_output = history.final_result() or ""
 
-        # TODO: Replace with proper failure_classifier once analyzer/ is implemented.
         if history.is_successful() and history.is_done():
-            task.status = "completed"
+            run_record.final_status = "completed"
         elif not history.is_successful():
-            task.status = "failed"
-            task.failure_category = "agent_unsuccessful"
-            task.status = "completed"
+            run_record.final_status = "failed"
+            run_record.failure_category = "agent_unsuccessful"
         else:
-            task.status = "failed"
-            task.failure_category = "agent_incomplete"
+            run_record.final_status = "failed"
+            run_record.failure_category = "agent_incomplete"
 
     except Exception as exc:
-        task.status = "failed"
-        task.failure_category = type(exc).__name__
-        task.final_output = str(exc)
+        run_record.final_status = "failed"
+        run_record.failure_category = type(exc).__name__
+        run_record.final_output = str(exc)
+
+    save_run_record(run_record)
+
+    return run_record
