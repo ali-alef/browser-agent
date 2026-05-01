@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from runner.session import Run
+from runner.model import Run
 
 STORAGE_DIR = Path(__file__).parent
 

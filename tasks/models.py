@@ -7,7 +7,7 @@ import pydantic
 
 class TaskRecord(pydantic.BaseModel):
     """Task definition only - execution results stored separately in storage/"""
-    id: int | str
+    id: int
     prompt: str
     level: Literal["easy", "medium", "hard", "very_hard"]
 

@@ -12,14 +12,7 @@ async def run_pipeline_for_task(task) -> None:
     for attempt in range(1, MAX_RETRIES + 1):
         print(f"  Attempt {attempt}/{MAX_RETRIES}...")
 
-        run_record = await run_one_task(task)
-
-        if run_record.final_status == "completed":
-            print(f"    Task completed successfully")
-            return
-
-        if run_record.final_status == "failed" and attempt < MAX_RETRIES:
-            print(f"    Task failed. Analyzing...")
+        await run_one_task(task)
 
     print(f"    Task {task.id} completed.")
 
