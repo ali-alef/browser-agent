@@ -19,6 +19,7 @@ class Step(pydantic.BaseModel):
     step_number: int = 0
     actions: list[Action] = pydantic.Field(default_factory=list)
     results: list[Result] = pydantic.Field(default_factory=list)
+    ai_input_message: str | None = None
     next_goal: str | None = None
     previous_goal: str | None = None
     memory: str | None = None
@@ -32,6 +33,7 @@ class Run(pydantic.BaseModel):
     """Execution record for a single task attempt."""
     run_id: str
     task_id: str | int
+    task_prompt: str = ""
     agent_version: str = ""
     steps: list[Step] = pydantic.Field(default_factory=list)
     judgment: str = ""

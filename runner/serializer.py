@@ -8,13 +8,14 @@ from browser_use.agent.views import AgentHistoryList, AgentStructuredOutput
 from runner.model import Step, Action, Result, Run
 
 
-def serialize_run(task_id: int, history: AgentHistoryList[AgentStructuredOutput]) -> Run:
+def serialize_run(task_id: int, task_prompt: str, history: AgentHistoryList[AgentStructuredOutput]) -> Run:
     payload = history.model_dump()
     raw_steps = payload.get("history")
 
     return Run(
         run_id=str(uuid4()),
         task_id=task_id,
+        task_prompt=task_prompt,
         agent_version="gemini-2.5-flash",
         steps=serialize_steps(raw_steps),
         judgment=_extract_judgment(raw_steps),
@@ -32,6 +33,7 @@ def serialize_steps(raw_history: list[dict[str, Any]]) -> list[Step]:
             step_number=i,
             actions=_extract_actions(model_output),
             results=_extract_results(raw_step),
+            ai_input_message=raw_step.get("state_message"),
             next_goal=model_output.get("next_goal", ""),
             previous_goal=model_output.get("evaluation_previous_goal", ""),
             memory=model_output.get("memory", ""),
