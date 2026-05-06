@@ -2,18 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pydantic
 
+from chatgpt_api import ChatCompletionRequest, chat_completion
 from runner.model import Run, Step
-
-
-DEFAULT_ANALYZER_MODEL = "gpt-4o"
-DEFAULT_API_BASE = "http://34.72.104.120/"
 
 
 class FailureReport(pydantic.BaseModel):
@@ -57,15 +51,7 @@ class _LLMJudgeOutput(pydantic.BaseModel):
 
 
 def analyze_run_log(run_record: Run) -> RunAnalysis:
-    analyzer_model = os.getenv("ANALYZER_MODEL", DEFAULT_ANALYZER_MODEL)
-
-    llm_output = _judge_with_llm(
-        run=run_record,
-        api_key="sk-tRFUVokeNnPpOsjoU0zlDw",
-        model=analyzer_model,
-        api_base=os.getenv("OPENAI_API_BASE", DEFAULT_API_BASE),
-        timeout_seconds=10,
-    )
+    llm_output = _judge_with_llm(run=run_record)
 
     unnecessary_steps = [item.step_number for item in llm_output.step_assessments if not item.necessary]
     failure_report = None
@@ -88,20 +74,10 @@ def analyze_run_log(run_record: Run) -> RunAnalysis:
         unnecessary_steps=unnecessary_steps,
         weaknesses=llm_output.weaknesses,
         key_findings=llm_output.key_findings,
-        llm_model=analyzer_model,
     )
 
 
-def _judge_with_llm(
-    run: Run,
-    api_key: str | None,
-    model: str,
-    api_base: str,
-    timeout_seconds: int,
-) -> _LLMJudgeOutput:
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required for analyzer LLM judgment.")
-
+def _judge_with_llm(run: Run) -> _LLMJudgeOutput:
     system_prompt = (
         "You are a QA evaluator for browser-agent run logs. "
         "Judge whether the task was achieved from the provided trace, classify root cause if failed, "
@@ -110,14 +86,14 @@ def _judge_with_llm(
     )
     user_prompt = _build_judge_prompt(run)
 
-    response_text = _chat_completion(
-        api_key=api_key,
-        api_base=api_base,
-        model=model,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        timeout_seconds=timeout_seconds,
-    )
+    response_text = chat_completion(
+        request_data=ChatCompletionRequest(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        ),
+    ).content
     raw_json = _extract_json_object(response_text)
     try:
         parsed = json.loads(raw_json)
@@ -241,51 +217,6 @@ def _trim(text: str | None, max_len: int) -> str | None:
     return clean[: max_len - 3] + "..."
 
 
-def _chat_completion(
-    *,
-    api_key: str,
-    api_base: str,
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-    timeout_seconds: int,
-) -> str:
-    url = api_base.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-    data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            body = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenAI API error ({exc.code}): {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"OpenAI API request failed: {exc}") from exc
-
-    parsed = json.loads(body)
-    try:
-        return parsed["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"Unexpected OpenAI response shape: {body[:500]}") from exc
-
-
 def _extract_json_object(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
@@ -306,7 +237,6 @@ def _extract_json_object(text: str) -> str:
     raise RuntimeError("No JSON object found in analyzer LLM response.")
 
 
-
 def analyze(run_record: Run) -> None:
     run_analyze = analyze_run_log(run_record)
     json.dump(
@@ -315,4 +245,3 @@ def analyze(run_record: Run) -> None:
         indent=2,
         ensure_ascii=False,
     )
-
