@@ -1,41 +1,31 @@
 from __future__ import annotations
 
-import os
-
 import browser_use
 
-from runner.serializer import serialize_run
-from tasks.models import TaskRecord
-from storage.executor import save_run_record
+from runner import models as runner_models
+from runner import serializer as runner_serializer
+from tasks import models as task_models
+from storage import registry as storage_registry
+import settings
 
-DEFAULT_MODEL = "gemini-2.5-flash"
-DEFAULT_PROXY = "socks5://localhost:2080"
 
-"AIzaSyDO-_y0LPDLToc4yxWfOvIlevph9TYpBfU"
-"AIzaSyBQmtjOcORblJY28moMGEVQkgqnGriFBM0"
-
-def _build_agent(task: TaskRecord) -> browser_use.Agent:
-    api_key = os.getenv("GEMINI_API_KEY", "AIzaSyBQmtjOcORblJY28moMGEVQkgqnGriFBM0")
-    proxy = os.getenv("BROWSER_PROXY", DEFAULT_PROXY).strip()
-
+async def run_one_task(task: task_models.TaskRecord) -> runner_models.Run:
     agent_kwargs = {
         "task": task.prompt.strip(),
         "llm": browser_use.llm.ChatOpenAI(
-            model="gpt-4o",
-            api_key="sk-tRFUVokeNnPpOsjoU0zlDw",
-            base_url="http://34.72.104.120/",
+            model=settings.MODEL_NAME,
+            api_key=settings.MODEL_API_KEY,
+            base_url=settings.MODEL_URL,
         ),
         "task_id": str(task.id),
     }
-    if proxy:
+    if settings.SOCKS5_PROXY:
         agent_kwargs["browser"] = browser_use.Browser(
-            proxy=browser_use.browser.ProxySettings(server=proxy)
+            proxy=browser_use.browser.ProxySettings(server=settings.SOCKS5_PROXY)
         )
+    agent = browser_use.Agent(**agent_kwargs)
 
-    return browser_use.Agent(**agent_kwargs)
-
-
-async def run_one_task(task: TaskRecord) -> None:
-    agent = _build_agent(task)
     history = await agent.run()
-    save_run_record(serialize_run(task.id, task.prompt, history))
+    run_record = runner_serializer.serialize_run(task, history)
+    storage_registry.save_run_record(run_record)
+    return run_record

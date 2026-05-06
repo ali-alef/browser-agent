@@ -1,0 +1,5 @@
+{
+  "id": 7,
+  "level": "hard",
+  "prompt": "Go to zalando.com, search for running shoes, filter for Adidas brand and men's category, open the top 3 products, and determine which one has the best rating-to-price ratio."
+}

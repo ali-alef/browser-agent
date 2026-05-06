@@ -1,22 +1,27 @@
 from __future__ import annotations
 
-from typing import Any
 from uuid import uuid4
+from typing import Any
 
-from browser_use.agent.views import AgentHistoryList, AgentStructuredOutput
+from browser_use.agent import views as browser_use_views
 
-from runner.model import Step, Action, Result, Run
+from runner import models as runner_model
+from tasks import models as task_models
+import settings
 
 
-def serialize_run(task_id: int, task_prompt: str, history: AgentHistoryList[AgentStructuredOutput]) -> Run:
+def serialize_run(
+    task_record: task_models.TaskRecord,
+    history: browser_use_views.AgentHistoryList[browser_use_views.AgentStructuredOutput],
+) -> runner_model.Run:
     payload = history.model_dump()
-    raw_steps = payload.get("history")
+    raw_steps = payload.get("history") or []
 
-    return Run(
+    return runner_model.Run(
         run_id=str(uuid4()),
-        task_id=task_id,
-        task_prompt=task_prompt,
-        agent_version="gemini-2.5-flash",
+        task_id=task_record.id,
+        task_prompt=task_record.prompt,
+        agent_version=settings.MODEL_NAME,
         steps=serialize_steps(raw_steps),
         judgment=_extract_judgment(raw_steps),
         final_output=history.final_result() or "",
@@ -24,12 +29,12 @@ def serialize_run(task_id: int, task_prompt: str, history: AgentHistoryList[Agen
     )
 
 
-def serialize_steps(raw_history: list[dict[str, Any]]) -> list[Step]:
-    serialized_steps: list[Step] = []
+def serialize_steps(raw_history: list[dict[str, Any]]) -> list[runner_model.Step]:
+    serialized_steps: list[runner_model.Step] = []
     for i, raw_step in enumerate(raw_history, start=1):
         model_output = raw_step.get("model_output") or {}
 
-        step = Step(
+        step = runner_model.Step(
             step_number=i,
             actions=_extract_actions(model_output),
             results=_extract_results(raw_step),
@@ -43,16 +48,16 @@ def serialize_steps(raw_history: list[dict[str, Any]]) -> list[Step]:
     return serialized_steps
 
 
-def _extract_actions(model_output: dict[str, Any]) -> list[Action]:
+def _extract_actions(model_output: dict[str, Any]) -> list[runner_model.Action]:
     actions = model_output.get("action") or []
-    action_items: list[Action] = []
+    action_items: list[runner_model.Action] = []
     for action in actions:
         if not isinstance(action, dict) or not action:
             continue
         action_type = str(next(iter(action.keys())))
         metadata = action.get(action_type)
         action_items.append(
-            Action(
+            runner_model.Action(
                 type=action_type,
                 metadata=metadata if isinstance(metadata, dict) else {},
             )
@@ -60,17 +65,17 @@ def _extract_actions(model_output: dict[str, Any]) -> list[Action]:
     return action_items
 
 
-def _extract_results(raw_step: dict[str, Any]) -> list[Result]:
-    result_items: list[Result] = []
+def _extract_results(raw_step: dict[str, Any]) -> list[runner_model.Result]:
+    result_items: list[runner_model.Result] = []
     for result in raw_step.get("result") or []:
         if not isinstance(result, dict):
             continue
         error = result.get("error")
         content = result.get("extracted_content")
         result_items.append(
-            Result(
-                error=str(error) if error is not None else None,
-                content=str(content) if content is not None else None,
+            runner_model.Result(
+                error=str(error) if error else None,
+                content=str(content) if content else None,
             )
         )
     return result_items
@@ -85,4 +90,4 @@ def _extract_judgment(raw_steps: list[dict[str, Any]]) -> str:
     last_result = last_results[0] or {}
     judgment = last_result.get("judgement") or {}
     reasoning = judgment.get("reasoning")
-    return str(reasoning) if reasoning is not None else ""
+    return str(reasoning) if reasoning else ""

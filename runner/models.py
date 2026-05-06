@@ -30,12 +30,11 @@ class Step(pydantic.BaseModel):
 
 
 class Run(pydantic.BaseModel):
-    """Execution record for a single task attempt."""
     run_id: str
     task_id: str | int
     task_prompt: str = ""
     agent_version: str = ""
     steps: list[Step] = pydantic.Field(default_factory=list)
     judgment: str = ""
-    final_status: str = "pending"  # pending | completed | failed | timed_out
+    final_status: str = "pending"
     final_output: str = ""

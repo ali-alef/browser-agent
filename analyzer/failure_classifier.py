@@ -1,71 +1,22 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any
 
-import pydantic
-
-from chatgpt_api import ChatCompletionRequest, chat_completion
-from runner.model import Run, Step
-
-
-class FailureReport(pydantic.BaseModel):
-    failure_type: str
-    failure_step: int | None = None
-    expected_action: str = ""
-    expected_strategy: str = ""
-    confidence: float = 0.0
-    evidence: list[str] = pydantic.Field(default_factory=list)
-    improvement_hint: str = ""
+from chatgpt_api import models as chatgpt_models, client as chatgpt_client
+from runner import models as runner_model
+from analyzer import models as analyzer_models
+from storage import registry as storage_registry
 
 
-class StepAssessment(pydantic.BaseModel):
-    step_number: int
-    actions: list[str] = pydantic.Field(default_factory=list)
-    necessary: bool = True
-    progress_made: bool = False
-    correct: bool = False
-    reason: str = ""
-
-
-class RunAnalysis(pydantic.BaseModel):
-    run_id: str
-    task_id: str | int
-    task_prompt: str = ""
-    status: str
-    verdict_reason: str
-    failure_report: FailureReport | None = None
-    step_assessments: list[StepAssessment] = pydantic.Field(default_factory=list)
-    unnecessary_steps: list[int] = pydantic.Field(default_factory=list)
-    weaknesses: list[str] = pydantic.Field(default_factory=list)
-    key_findings: list[str] = pydantic.Field(default_factory=list)
-    llm_model: str = ""
-
-
-class _LLMJudgeOutput(pydantic.BaseModel):
-    status: str
-    verdict_reason: str
-    failure_type: str | None = None
-    failure_step: int | None = None
-    expected_action: str = ""
-    expected_strategy: str = ""
-    confidence: float = 0.0
-    evidence: list[str] = pydantic.Field(default_factory=list)
-    improvement_hint: str = ""
-    weaknesses: list[str] = pydantic.Field(default_factory=list)
-    key_findings: list[str] = pydantic.Field(default_factory=list)
-    step_assessments: list[StepAssessment] = pydantic.Field(default_factory=list)
-
-
-def analyze_run_log(run_record: Run) -> RunAnalysis:
+def analyze_run_log(run_record: runner_model.Run) -> analyzer_models.RunAnalysis:
     llm_output = _judge_with_llm(run=run_record)
 
     unnecessary_steps = [item.step_number for item in llm_output.step_assessments if not item.necessary]
     failure_report = None
     if llm_output.status == "failure":
-        failure_report = FailureReport(
+        failure_report = analyzer_models.FailureReport(
             failure_type=llm_output.failure_type or "ambiguous",
             failure_step=llm_output.failure_step,
             expected_action=llm_output.expected_action,
@@ -75,7 +26,7 @@ def analyze_run_log(run_record: Run) -> RunAnalysis:
             improvement_hint=llm_output.improvement_hint,
         )
 
-    return RunAnalysis(
+    return analyzer_models.RunAnalysis(
         run_id=run_record.run_id,
         task_id=run_record.task_id,
         task_prompt=run_record.task_prompt.strip(),
@@ -89,7 +40,7 @@ def analyze_run_log(run_record: Run) -> RunAnalysis:
     )
 
 
-def _judge_with_llm(run: Run) -> _LLMJudgeOutput:
+def _judge_with_llm(run: runner_model.Run) -> analyzer_models.LLMJudgeOutput:
     system_prompt = (
         "You are a QA evaluator for browser-agent run logs. "
         "Judge whether the task was achieved from the provided trace, classify root cause if failed, "
@@ -98,8 +49,8 @@ def _judge_with_llm(run: Run) -> _LLMJudgeOutput:
     )
     user_prompt = _build_judge_prompt(run)
 
-    response_text = chat_completion(
-        request_data=ChatCompletionRequest(
+    response_text = chatgpt_client.chat_completion(
+        request_data=chatgpt_models.ChatCompletionRequest(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -112,10 +63,10 @@ def _judge_with_llm(run: Run) -> _LLMJudgeOutput:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Analyzer LLM returned non-JSON response: {exc}") from exc
 
-    return _LLMJudgeOutput.model_validate(parsed)
+    return analyzer_models.LLMJudgeOutput.model_validate(parsed)
 
 
-def _serialize_step_for_llm(step: Step) -> dict[str, Any]:
+def _serialize_step_for_llm(step: runner_model.Step) -> dict[str, Any]:
     actions = [{"type": action.type, **action.metadata} for action in step.actions]
     results = [
         {
@@ -140,7 +91,7 @@ def _serialize_step_for_llm(step: Step) -> dict[str, Any]:
     }
 
 
-def _build_judge_prompt(run: Run) -> str:
+def _build_judge_prompt(run: runner_model.Run) -> str:
     steps = [_serialize_step_for_llm(step) for step in run.steps]
     trace_context = {
         "task_prompt": run.task_prompt.strip(),
@@ -278,11 +229,6 @@ def _extract_json_object(text: str) -> str:
     raise RuntimeError("No JSON object found in analyzer LLM response.")
 
 
-def analyze(run_record: Run) -> None:
+def analyze(run_record: runner_model.Run) -> None:
     run_analyze = analyze_run_log(run_record)
-    json.dump(
-        run_analyze.model_dump(mode="json", serialize_as_any=True),
-        open(f"storage/analys/analys_{run_analyze.task_id}_{run_analyze.run_id}.json", mode='w'),
-        indent=2,
-        ensure_ascii=False,
-    )
+    storage_registry.save_analysis_record(run_analyze)

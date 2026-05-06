@@ -1,0 +1,5 @@
+{
+  "id": 4,
+  "level": "medium",
+  "prompt": "Go to zalando.com, search for Nike shoes, filter by size EU 42, sort by lowest price, and list the first 3 products with their prices."
+}

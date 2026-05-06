@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from tasks.models import TaskList, TaskRecord
-
-TASKS_PATH = Path(__file__).parent / "definitions" / "tasks.json"
+from tasks import models as task_models
 
 
-def load_tasks(path: Path = TASKS_PATH) -> list[TaskRecord]:
-    return TaskList.model_validate_json(path.read_text(encoding="utf-8")).root
-
-
-def save_tasks(tasks: list[TaskRecord], path: Path = TASKS_PATH) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = TaskList(tasks).model_dump(mode="json", serialize_as_any=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def load_task(task_id: int) -> task_models.TaskRecord:
+    with open(f"tasks/definitions/task_{task_id}.json", encoding="utf-8") as task_file:
+        return task_models.TaskRecord.model_validate(json.load(task_file))
