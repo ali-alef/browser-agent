@@ -21,7 +21,6 @@ def chat_completion(request_data: chatgpt_models.ChatCompletionRequest) -> chatg
             "Authorization": f"Bearer {settings.MODEL_API_KEY}",
             "Content-Type": "application/json",
         },
-        proxies={"http": settings.SOCKS5_PROXY, "https": settings.SOCKS5_PROXY},
     )
     response.raise_for_status()
     parsed = json.loads(response.text)

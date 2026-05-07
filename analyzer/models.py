@@ -38,7 +38,7 @@ class LLMJudgeOutput(pydantic.BaseModel):
     status: str
     verdict_reason: str
     failure_type: str | None = None
-    failure_step: int | None = None
+    failure_step: int | str | None = None
     expected_action: str = ""
     expected_strategy: str = ""
     confidence: float = 0.0

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from analyzer import models as analyzer_models
 from runner import models as runner_models
 
-STORAGE_DIR = Path(__file__).parent
+
+def load_run_record(task_id: str, run_id: str) -> runner_models.Run:
+    filename = f"task_{task_id}_{run_id}.json"
+    with open(f"storage/runs/{filename}", mode="r") as run_file:
+        return runner_models.Run.model_validate(json.load(run_file))
 
 
 def save_run_record(run_record: runner_models.Run) -> None:
