@@ -7,10 +7,17 @@ from analyzer import failure_classifier
 from runner import agent_driver
 from storage import registry as storage_registry
 from tasks import registry as task_registry
+from improver import improvement_engine
 
 def analyze_run(task_id: str, run_id: str) -> None:
     run = storage_registry.load_run_record(task_id=task_id, run_id=run_id)
     failure_classifier.analyze(run)
+
+
+def improve_run(task_id: str, run_id: str) -> None:
+    analys = storage_registry.load_analysis_record(task_id=task_id, run_id=run_id)
+    improvement_engine.generate_improvement_plan(analys)
+
 
 async def _main() -> None:
     parser = argparse.ArgumentParser()
@@ -24,4 +31,4 @@ async def _main() -> None:
 
 if __name__ == "__main__":
     # asyncio.run(_main())
-    analyze_run("1", "da8bf272-afc5-4391-9426-82456b20ea2f")
+    improve_run("1", "9e1b894d-dc0a-4d28-a29a-baf79b57748c")
