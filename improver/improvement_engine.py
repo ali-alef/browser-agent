@@ -6,6 +6,7 @@ from analyzer import models as analyzer_models
 from chatgpt_api import models as chatgpt_models, client as chatgpt_client
 from improver import models as improver_models
 from storage import registry as storage_registry
+from utils import extract_json_object
 
 
 def generate_improvement_plan(analysis: analyzer_models.RunAnalysis) -> None:
@@ -43,7 +44,7 @@ def _get_improvement_suggestions(analysis: analyzer_models.RunAnalysis) -> dict:
         ),
     ).content
     
-    raw_json = _extract_json_from_response(response_text)
+    raw_json = extract_json_object(response_text)
     try:
         suggestions = json.loads(raw_json)
     except json.JSONDecodeError as exc:
@@ -154,25 +155,3 @@ Focus on making improvements that are:
 - Implementable without modifying the target website
 - Clear enough for an AI agent to understand
 """
-
-
-def _extract_json_from_response(text: str) -> str:
-    """Extract JSON object from LLM response."""
-    stripped = text.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        return stripped
-    
-    if "```json" in stripped:
-        start = stripped.find("```json")
-        end = stripped.find("```", start + 7)
-        if end != -1:
-            candidate = stripped[start + 7 : end].strip()
-            if candidate.startswith("{") and candidate.endswith("}"):
-                return candidate
-    
-    first = stripped.find("{")
-    last = stripped.rfind("}")
-    if first != -1 and last != -1 and last > first:
-        return stripped[first : last + 1]
-    
-    raise RuntimeError("No JSON object found in improver LLM response.")

@@ -6,13 +6,14 @@ from runner import models as runner_models
 from runner import serializer as runner_serializer
 from tasks import models as task_models
 from storage import registry as storage_registry
+from improver import models as improver_models
 import settings
 
 
-async def run_one_task(task: task_models.TaskRecord) -> runner_models.Run:
-    """Run a task with the AI agent, optionally with hints injected."""
+async def run_one_task(task: task_models.TaskRecord, improvement: improver_models.ImprovementPlan) -> runner_models.Run:
+    if improvement:
+        task = _apply_improvement_to_task(task, improvement)
     
-    # Enrich task prompt with hints if available
     enriched_prompt = _enrich_prompt_with_hints(task)
     
     agent_kwargs = {
@@ -34,6 +35,20 @@ async def run_one_task(task: task_models.TaskRecord) -> runner_models.Run:
     run_record = runner_serializer.serialize_run(task, history)
     storage_registry.save_run_record(run_record)
     return run_record
+
+
+def _apply_improvement_to_task(task: task_models.TaskRecord, improvement) -> task_models.TaskRecord:
+    updated_task = task.model_copy()
+    
+    if improvement.prompt_improvement:
+        updated_task.prompt = improvement.prompt_improvement.improved_prompt
+    
+    if improvement.hint_improvement:
+        updated_task.hints = improvement.hint_improvement.new_hints
+        if improvement.hint_improvement.step_guidance:
+            updated_task.step_guidance = improvement.hint_improvement.step_guidance
+    
+    return updated_task
 
 
 def _enrich_prompt_with_hints(task: task_models.TaskRecord) -> str:

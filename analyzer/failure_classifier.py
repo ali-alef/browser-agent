@@ -8,6 +8,7 @@ from chatgpt_api import models as chatgpt_models, client as chatgpt_client
 from runner import models as runner_model
 from analyzer import models as analyzer_models
 from storage import registry as storage_registry
+from utils import extract_json_object
 
 
 def analyze_run_log(run_record: runner_model.Run) -> analyzer_models.RunAnalysis:
@@ -57,7 +58,7 @@ def _judge_with_llm(run: runner_model.Run) -> analyzer_models.LLMJudgeOutput:
             ],
         ),
     ).content
-    raw_json = _extract_json_object(response_text)
+    raw_json = extract_json_object(response_text)
     try:
         parsed = json.loads(raw_json)
     except json.JSONDecodeError as exc:
@@ -207,26 +208,6 @@ def _extract_interactive_elements_text(message: str | None) -> str:
             tail = tail[:end_idx]
             break
     return tail.strip()
-
-
-def _extract_json_object(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        return stripped
-
-    if "```json" in stripped:
-        start = stripped.find("```json")
-        end = stripped.find("```", start + 7)
-        if end != -1:
-            candidate = stripped[start + 7 : end].strip()
-            if candidate.startswith("{") and candidate.endswith("}"):
-                return candidate
-
-    first = stripped.find("{")
-    last = stripped.rfind("}")
-    if first != -1 and last != -1 and last > first:
-        return stripped[first : last + 1]
-    raise RuntimeError("No JSON object found in analyzer LLM response.")
 
 
 def analyze(run_record: runner_model.Run) -> None:

@@ -16,7 +16,7 @@
     "new_hints": [
       "Ensure the search bar is focused before typing.",
       "Wait for the autocomplete suggestions to fully load before selecting.",
-      "If the page does not load, use the browser's back function and retry the search.",
+      "After searching, if the page does not load, wait for few seconds and get page one more time.",
       "Verify the product page is fully loaded before extracting the price."
     ],
     "step_guidance": {

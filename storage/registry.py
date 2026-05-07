@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from analyzer import models as analyzer_models
 from runner import models as runner_models
@@ -39,6 +40,12 @@ def save_analysis_record(run_analyze: analyzer_models.RunAnalysis) -> None:
             indent=2,
             ensure_ascii=False,
         )
+
+
+def load_improvement(task_id: str, run_id: str) -> improver_models.ImprovementPlan | None:
+    filename = f"improve_{task_id}_{run_id}.json"
+    with open(f"storage/improvements/{filename}", mode="r") as f:
+        return improver_models.ImprovementPlan.model_validate(json.load(f))
 
 
 def save_improvement_plan(improvement_plan: improver_models.ImprovementPlan) -> None:
